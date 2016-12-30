@@ -1,13 +1,13 @@
 /**
  * Restful API server that wraps up a simple int to string map.
- * 
+ *
  * Usage: diy-dist-db-node 8080
  *
  * To put a record in the map:
  *   curl -i -H 'Content-Type: application/json' \
  *        -d '{"Id": 3, "Value": "foo"}' \
  *        http://localhost:8080/things
- * 
+ *
  * To get a specific record from the map:
  *   curl -i http://localhost:8080/things/3
  *
@@ -17,21 +17,27 @@
 package main
 
 import (
-	"github.com/ant0ine/go-json-rest/rest"
+	"encoding/json"
+	"fmt"
+	"io/ioutil"
 	"log"
-	"os"
 	"net/http"
+	"os"
 	"strconv"
 	"time"
+
+	"github.com/ant0ine/go-json-rest/rest"
 )
 
 type Thing struct {
-	Id int
-	Value string
+	Id        int
+	Value     string
 	Timestamp int64
 }
 
 var things map[int]Thing
+
+var port string
 
 func main() {
 
@@ -47,11 +53,12 @@ func main() {
 		log.Fatal(err)
 	}
 	api.SetApp(router)
-	port := "8080" 
+	port = "8080"
 	if len(os.Args) > 1 {
 		port = os.Args[1]
 	}
-	log.Fatal(http.ListenAndServe(":" + port, api.MakeHandler()))
+	loadThings()
+	log.Fatal(http.ListenAndServe(":"+port, api.MakeHandler()))
 }
 
 func getAllThings(w rest.ResponseWriter, r *rest.Request) {
@@ -80,12 +87,31 @@ func getThing(w rest.ResponseWriter, r *rest.Request) {
 
 func postThing(w rest.ResponseWriter, r *rest.Request) {
 	thing := Thing{}
-	thing.Timestamp = time.Now().UnixNano() / 1000000 
+	thing.Timestamp = time.Now().UnixNano() / 1000000
 	err := r.DecodeJsonPayload(&thing)
 	if err != nil {
 		rest.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	things[thing.Id] = thing 
+	things[thing.Id] = thing
 	w.WriteJson(thing)
+
+	persistThings()
+}
+
+func persistThings() {
+	b, _ := json.Marshal(things)
+	file := fmt.Sprintf("things-%s.json", port)
+	ioutil.WriteFile(file, b, 0666)
+}
+
+func loadThings() {
+	file := fmt.Sprintf("things-%s.json", port)
+	b, err := ioutil.ReadFile(file)
+	if err != nil {
+		// start with no things
+		return
+	}
+
+	json.Unmarshal(b, &things)
 }
